@@ -1,0 +1,10 @@
+{
+  "climbing_map": "Climbing Weather Map",
+  "radius": "Radius",
+  "meters": "meters",
+  "kilometers": "kilometers",
+  "current_weather": "Current Weather",
+  "forecast": "Forecast",
+  "temperature": "Temperature",
+  "precipitation": "Precipitation"
+}

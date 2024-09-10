@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import L from 'leaflet';
 import {
   useGetClimbingSpotsQuery,
   useGetCurrentWeatherQuery,
   useGetForecastQuery,
 } from './services/api';
+import { useTranslation } from 'react-i18next';
 
 // Fix for default icon issue in Leaflet
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -73,10 +75,11 @@ interface ForecastEntry {
 function App() {
   const [isForecast, setIsForecast] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number]>([51.1093, 17.0386]); // Wroclaw
-  const [radius, setRadius] = useState(150 * 1000); // Default radius in meters - 100 km
+  const [radius, setRadius] = useState(100); // default radius in km - 100 km
+  const { t } = useTranslation();
 
   useEffect(() => {
-    // Get user location
+    // get user location
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
@@ -89,7 +92,7 @@ function App() {
   }, []);
 
   const { data: climbingSpots = [], refetch: refetchSpots } = useGetClimbingSpotsQuery({
-    radius,
+    radius: radius * 1000,
     lat: userLocation[0],
     lon: userLocation[1],
   });
@@ -106,10 +109,10 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Climbing Spots</h1>
+      <h1>{t("climbing_map")}</h1>
       <div>
         <label>
-          Radius (meters):
+          {t("radius")} ({t("kilometers")}):
           <input
             type="number"
             value={radius}
@@ -117,8 +120,8 @@ function App() {
             style={{ marginLeft: '10px', marginRight: '10px' }}
           />
         </label>
-        <button onClick={() => setIsForecast(false)}>Current Weather</button>
-        <button onClick={() => setIsForecast(true)}>Forecast</button>
+        <button onClick={() => setIsForecast(false)}>{t("current_weather")}</button>
+        <button onClick={() => setIsForecast(true)}>{t("forecast")}</button>
       </div>
       <MapContainer center={userLocation} zoom={10} style={{ height: '600px', width: '100%' }}>
         <TileLayer
@@ -126,6 +129,7 @@ function App() {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
         {climbingSpots.map((spot: ClimbingSpot, idx: number) => (
+          // icon can be customized
           <Marker key={idx} position={[spot.lat, spot.lon]}>
             <Popup>
               <b>{spot.tags.name} {spot.tags.indoor === "yes" && <span>(indoor)</span>}</b>
@@ -135,18 +139,18 @@ function App() {
                   <div key={index}>
                     <b>{forecast.dt_txt}</b>
                     <br />
-                    Temperature: {forecast.main.temp}°C
+                    {t("temperature")}: {forecast.main.temp}°C
                     <br />
-                    Precipitation: {forecast.rain ? forecast.rain['3h'] || 0 : forecast.snow ? forecast.snow['3h'] || 0 : 0} mm
+                    {t("precipitation")}: {forecast.rain ? forecast.rain['3h'] || 0 : forecast.snow ? forecast.snow['3h'] || 0 : 0} mm
                     <br />
                   </div>
                 ))
               ) : (
                 weatherData && (
                   <>
-                    Temperature: {weatherData.main.temp}°C
+                    {t("temperature")}: {weatherData.main.temp}°C
                     <br />
-                    Precipitation: {weatherData.rain ? weatherData.rain['1h'] || 0 : weatherData.snow ? weatherData.snow['1h'] || 0 : 0} mm
+                    {t("precipitation")}: {weatherData.rain ? weatherData.rain['1h'] || 0 : weatherData.snow ? weatherData.snow['1h'] || 0 : 0} mm
                   </>
                 )
               )}
