@@ -1,25 +1,22 @@
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import ApartmentIcon from '@mui/icons-material/Apartment';
-import L from 'leaflet';
+import L, { DivIcon, Icon, IconOptions } from 'leaflet';
 import {
   useGetClimbingSpotsQuery,
   useGetCurrentWeatherQuery,
   useGetForecastQuery,
 } from './services/api';
 import { useTranslation } from 'react-i18next';
-
-// Fix for default icon issue in Leaflet
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 
 let DefaultIcon = L.icon({
   iconUrl: icon,
   shadowUrl: iconShadow,
+  iconRetinaUrl: iconRetinaUrl,
 });
-
-L.Marker.prototype.options.icon = DefaultIcon;
 
 interface ClimbingSpot {
   id: string;
@@ -60,6 +57,9 @@ interface WeatherData {
   main: {
     temp: number;
   };
+  weather: {
+    icon: string;
+  }[];
   rain?: {
     '1h'?: number;
   };
@@ -146,9 +146,37 @@ function App() {
         {/* <TileLayer
           url={`https://maps.openweathermap.org/maps/2.0/weather/1h/HRD0/4/1/6?date=1618898990&appid=${weatherAPIKey}`}
           /> */}
-        {climbingSpots.map((spot: ClimbingSpot, idx: number) => (
+        {climbingSpots.map((spot: ClimbingSpot, idx: number) => {
+          const iconUrl = weatherData && weatherData.weather[0].icon
+            ? `http://openweathermap.org/img/wn/${weatherData.weather[0].icon}.png`
+            : null;
+
+          const temperature = weatherData ? `${weatherData.main.temp}°C` : '';
+
+          // const weatherIcon: Icon<IconOptions> = iconUrl ? new L.Icon({
+          //   iconUrl: iconUrl,
+          //   iconSize: [50, 50],
+          //   iconAnchor: [25, 25],
+          //   popupAnchor: [-3, -76]
+          // }) : DefaultIcon;
+
+          const iconHtml = `
+            <div style="display: flex; align-items: center;">
+              <img src="${iconUrl}" alt="weather icon" style="width: 50px; height: 50px;" />
+              <span style="margin-left: 5px;">${temperature}</span>
+            </div>
+          `;
+
+          const weatherIcon: DivIcon = iconUrl ? new L.DivIcon({
+            html: iconHtml,
+            className: '',
+            iconSize: [60, 60], // Adjust as needed
+            iconAnchor: [30, 30]
+          }) : DefaultIcon;
+
+          return (
           // icon can be customized
-          <Marker key={idx} position={[spot.lat, spot.lon]}>
+          <Marker key={idx} position={[spot.lat, spot.lon]} icon={weatherIcon}>
             <Popup>
               <b>{spot.tags.name} {(spot.tags.indoor === "yes" || spot.tags.building === "yes" || spot.tags.leisure === "sports_centre") && <span>(centrum)</span>}</b>
               <br />
@@ -174,7 +202,8 @@ function App() {
               )}
             </Popup>
           </Marker>
-        ))}
+          );
+        })}
       </MapContainer>
     </div>
   );
