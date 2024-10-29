@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L, { DivIcon, Icon, IconOptions } from 'leaflet';
+import L, { DivIcon } from 'leaflet';
+// import MarkerClusterGroup from 'react-leaflet-markercluster';
+// import 'react-leaflet-markercluster/dist/styles.min.css';
 import {
   useGetClimbingSpotsQuery,
   useGetCurrentWeatherQuery,
@@ -16,6 +18,8 @@ let DefaultIcon = L.icon({
   iconUrl: icon,
   shadowUrl: iconShadow,
   iconRetinaUrl: iconRetinaUrl,
+  iconSize: [25, 41], // Adjust as needed
+  iconAnchor: [13, 0]
 });
 
 interface ClimbingSpot {
@@ -53,21 +57,6 @@ interface ClimbingSpot {
   }
 }
 
-interface WeatherData {
-  main: {
-    temp: number;
-  };
-  weather: {
-    icon: string;
-  }[];
-  rain?: {
-    '1h'?: number;
-  };
-  snow?: {
-    '1h'?: number;
-  };
-}
-
 interface ForecastEntry {
   dt_txt: string;
   main: {
@@ -83,6 +72,97 @@ interface ForecastEntry {
 
 const weatherAPIKey = 'f1f10124d8835f9f53a99e0425ea5f60'; // config
 
+const groupSpotsIntoClusters = (spots: ClimbingSpot[], distanceThreshold: number) => {
+  // Function to calculate distance between two points
+  const calculateDistance = (point1: {lat: any, lon: any}, point2: { lat: any; lon: any; }) => {
+    const R = 6371; // Radius of the Earth in km
+    const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+    const dLon = (point2.lon - point1.lon) * Math.PI / 180;
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const clusters: { centralPoint: { lat: any, lon: any }; members: ClimbingSpot[]; }[] = [];
+
+  spots.forEach((spot: ClimbingSpot) => {
+    let addedToCluster = false;
+
+    for (let cluster of clusters) {
+      const { centralPoint, members } = cluster;
+      const distance = calculateDistance(centralPoint, spot);
+
+      if (distance <= distanceThreshold) {
+        members.push(spot);
+        cluster.centralPoint = {
+          lat: (centralPoint.lat * members.length + spot.lat) / (members.length + 1),
+          lon: (centralPoint.lon * members.length + spot.lon) / (members.length + 1),
+        };
+        addedToCluster = true;
+        break;
+      }
+    }
+
+    if (!addedToCluster) {
+      clusters.push({
+        centralPoint: { lat: spot.lat, lon: spot.lon },
+        members: [spot],
+      });
+    }
+  });
+
+  return clusters;
+};
+
+const ClusterMarker = ({ cluster }: any) => {
+  // Extract central point coordinates from the cluster
+  const { centralPoint } = cluster;
+  console.log("CENTRAL POINT", centralPoint);
+
+  // Fetch weather data for the cluster’s central point
+  const { data } = useGetCurrentWeatherQuery({
+    lat: centralPoint.lat,
+    lon: centralPoint.lon,
+  });
+
+  console.log("CP DATA", data);
+
+  if (!data || !data.weather || !data.main) return null;
+
+  const iconUrl = data.weather[0].icon
+    ? `http://openweathermap.org/img/wn/${data.weather[0].icon}.png`
+    : null;
+
+  const temperature = `${data.main.temp}°C`;
+
+  const iconHtml = `
+    <div style="display: flex; align-items: center;">
+      <img src="${iconUrl}" alt="weather icon" style="width: 50px; height: 50px;" />
+      <span style="text-shadow: 1px 1px 1px #fff, -1px 1px 1px #fff, -1px -1px 1px #fff, 1px -1px 1px #fff">${temperature}</span>
+    </div>
+  `;
+
+  const weatherIcon: DivIcon = iconUrl ? new L.DivIcon({
+    html: iconHtml,
+    className: '',
+    iconSize: [60, 60], // Adjust as needed
+    iconAnchor: [30, 30]
+  }) : DefaultIcon;
+
+  return (
+    <Marker position={[centralPoint.lat, centralPoint.lon]} icon={weatherIcon}>
+<Popup>
+        <b>Cluster Weather</b>
+        <br />
+        Temperature: {temperature}
+      </Popup>
+    </Marker>
+  );
+};
+
 function App() {
   const [isForecast, setIsForecast] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number]>([51.1093, 17.0386]); // Wroclaw
@@ -93,7 +173,7 @@ function App() {
     // get user location
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        console.log("USER POSITION", position);
+        //console.log("USER POSITION", position);
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
       },
@@ -109,15 +189,22 @@ function App() {
     lon: userLocation[1],
   });
 
+  // group climbing spots into clusters based on distance
+  const distanceThreshold = 10; // in kilometers
+  const clusters = groupSpotsIntoClusters(climbingSpots, distanceThreshold);
+  console.log("CLUSTERS", clusters);
+
   const { data: weatherData } = useGetCurrentWeatherQuery(
     climbingSpots.length ? { lat: climbingSpots[0].lat, lon: climbingSpots[0].lon } : { lat: 0, lon: 0},
     { skip: climbingSpots.length === 0 }
   );
 
-  const { data: forecastData } = useGetForecastQuery(
-    climbingSpots.length ? { lat: climbingSpots[0].lat, lon: climbingSpots[0].lon } : { lat: 0, lon: 0},
-    { skip: climbingSpots.length === 0 }
-  );
+  console.log("DATA", weatherData);
+
+  // const { data: forecastData } = useGetForecastQuery(
+  //   climbingSpots.length ? { lat: climbingSpots[0].lat, lon: climbingSpots[0].lon } : { lat: 0, lon: 0},
+  //   { skip: climbingSpots.length === 0 }
+  // );
 
   return (
     <div className="App">
@@ -146,41 +233,42 @@ function App() {
         {/* <TileLayer
           url={`https://maps.openweathermap.org/maps/2.0/weather/1h/HRD0/4/1/6?date=1618898990&appid=${weatherAPIKey}`}
           /> */}
+          {/* // @ts-ignore  */}
+          {/* <MarkerClusterGroup> */}
+
+          {/* the idea: use this loop to display dots with object names, the other loop for weather (clustered) */}
         {climbingSpots.map((spot: ClimbingSpot, idx: number) => {
-          const iconUrl = weatherData && weatherData.weather[0].icon
-            ? `http://openweathermap.org/img/wn/${weatherData.weather[0].icon}.png`
-            : null;
 
-          const temperature = weatherData ? `${weatherData.main.temp}°C` : '';
+          // const currentWeatherData = weatherData ? weatherData[idx] : null; // Get corresponding weather data
 
-          // const weatherIcon: Icon<IconOptions> = iconUrl ? new L.Icon({
-          //   iconUrl: iconUrl,
-          //   iconSize: [50, 50],
-          //   iconAnchor: [25, 25],
-          //   popupAnchor: [-3, -76]
+          // if (!currentWeatherData) return null;
+
+          // const iconUrl = currentWeatherData.weather[0].icon
+          //   ? `http://openweathermap.org/img/wn/${currentWeatherData.weather[0].icon}.png`
+          //   : null;
+
+          // const temperature = `${currentWeatherData.main.temp}°C`;
+
+          // const iconHtml = `
+          //   <div style="display: flex; align-items: center;">
+          //     <img src="${iconUrl}" alt="weather icon" style="width: 50px; height: 50px;" />
+          //     <span style="margin-left: 5px;">${temperature}</span>
+          //   </div>
+          // `;
+
+          // const weatherIcon: DivIcon = iconUrl ? new L.DivIcon({
+          //   html: iconHtml,
+          //   className: '',
+          //   iconSize: [60, 60], // Adjust as needed
+          //   iconAnchor: [30, 30]
           // }) : DefaultIcon;
 
-          const iconHtml = `
-            <div style="display: flex; align-items: center;">
-              <img src="${iconUrl}" alt="weather icon" style="width: 50px; height: 50px;" />
-              <span style="margin-left: 5px;">${temperature}</span>
-            </div>
-          `;
-
-          const weatherIcon: DivIcon = iconUrl ? new L.DivIcon({
-            html: iconHtml,
-            className: '',
-            iconSize: [60, 60], // Adjust as needed
-            iconAnchor: [30, 30]
-          }) : DefaultIcon;
-
           return (
-          // icon can be customized
-          <Marker key={idx} position={[spot.lat, spot.lon]} icon={weatherIcon}>
+          <Marker key={idx} position={[spot.lat, spot.lon]} icon={DefaultIcon}>
             <Popup>
               <b>{spot.tags.name} {(spot.tags.indoor === "yes" || spot.tags.building === "yes" || spot.tags.leisure === "sports_centre") && <span>(centrum)</span>}</b>
               <br />
-              {isForecast ? (
+              {/* {isForecast ? (
                 forecastData && forecastData.list && forecastData.list.slice(0, 5).map((forecast: ForecastEntry, index: number) => (
                   <div key={index}>
                     <b>{forecast.dt_txt}</b>
@@ -191,19 +279,25 @@ function App() {
                     <br />
                   </div>
                 ))
-              ) : (
-                weatherData && (
+              ) : ( */}
+                {/* currentWeatherData && (
                   <>
-                    {t("temperature")}: {weatherData.main.temp}°C
+                    {t("temperature")}: {currentWeatherData.main.temp}°C
                     <br />
-                    {t("precipitation")}: {weatherData.rain ? weatherData.rain['1h'] || 0 : weatherData.snow ? weatherData.snow['1h'] || 0 : 0} mm
+                    {t("precipitation")}: {currentWeatherData.rain ? currentWeatherData.rain['1h'] || 0 : currentWeatherData.snow ? currentWeatherData.snow['1h'] || 0 : 0} mm
                   </>
-                )
-              )}
+                ) */}
+              {/* )} */}
             </Popup>
           </Marker>
           );
         })}
+
+        {clusters.map((cluster, idx) => (
+          <ClusterMarker key={idx} cluster={cluster} />
+        ))}
+
+        {/* </MarkerClusterGroup> */}
       </MapContainer>
     </div>
   );

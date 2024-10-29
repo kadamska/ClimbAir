@@ -6,6 +6,7 @@ const weatherAPIKey = 'f1f10124d8835f9f53a99e0425ea5f60'; // config
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({}),
+  tagTypes: ['Spots', 'Weather', 'Forecast'],
   endpoints: (builder) => ({
     getClimbingSpots: builder.query({
       query: ({ radius, lat, lon }: { radius: number, lat: number, lon: number }) => ({
@@ -18,6 +19,8 @@ export const api = createApi({
           out body;
         `,
       }),
+      providesTags: (result, error, arg) => [{ type: 'Spots', id: `${arg.radius}-${arg.lat}-${arg.lon}` as const }],
+      keepUnusedDataFor: 3600 * 24, // Cache duration set to 24 hours
       transformResponse: (response: any) => {
         const nodes = response.elements.filter((e: any) => e.type === "node");
         const unnamedNodes = nodes.filter((e: any) => !e.tags?.name);
@@ -42,16 +45,18 @@ export const api = createApi({
       }
     }),
     getCurrentWeather: builder.query({
-      query: ({ lat, lon }: { lat: number, lon: number }) => ({
-        url: `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`,
-        method: 'GET',
-      }),
+      query: ({ lat, lon }: { lat: number, lon: number }) => (`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`),
+      providesTags: (result, error, arg) => [{ type: 'Weather', id: `${arg.lat}-${arg.lon}` as const }],
+      keepUnusedDataFor: 3600, // Cache duration set to 1 hour
     }),
+
     getForecast: builder.query({
       query: ({ lat, lon }: { lat: number, lon: number }) => ({
         url: `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`,
         method: 'GET',
       }),
+      providesTags: (result, error, arg) => [{ type: 'Forecast', id: `${arg.lat}-${arg.lon}` as const }],
+      keepUnusedDataFor: 3600 * 6, // Cache duration set to 6 hours
     }),
   }),
 });
