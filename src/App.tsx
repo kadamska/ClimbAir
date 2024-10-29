@@ -32,15 +32,24 @@ interface ClimbingSpot {
     "addr:housenumber": string;
     "addr:postcode": string;
     "addr:street": string;
+    "building": string; // "yes"
     "climbing": string;
+    "climbing:bolted": string; // "yes"
+    "climbing:mixed": string; // "yes"
+    "climbing:rock": string; // "limestone", "sandstone", "granite", "gneiss"
+    "climbing:sport": string; // "yes"
+    "climbing:trad": string; // "yes"
     "description": string;
     "email": string;
+    "facebook": string; // "https://www.facebook.com/flow.climbingspace"
     "fee": string; // "yes"
+    "height": string; // "15" (meters)
     "indoor": string; // "yes"
     "leisure": string; // "sports_centre",
     "name": string; // "Climbing Spot",
     "opening_hours": string; // "Mo-Fr 09:00-24:00; Sa-Su 08:00-23:00",
     "phone": string; // "+48 61 250 24 80",
+    "rock": string; // "gneiss"
     "source:addr": string; // "EMUiA (emuia.geoportal.gov.pl)",
     "sport": string; // "climbing",
     "website": string; // "https://www.climbingspot.pl/"
@@ -72,6 +81,8 @@ interface ForecastEntry {
   };
 }
 
+const weatherAPIKey = 'f1f10124d8835f9f53a99e0425ea5f60'; // config
+
 function App() {
   const [isForecast, setIsForecast] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number]>([51.1093, 17.0386]); // Wroclaw
@@ -82,6 +93,7 @@ function App() {
     // get user location
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        console.log("USER POSITION", position);
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
       },
@@ -128,11 +140,17 @@ function App() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
+        <TileLayer
+          url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${weatherAPIKey}`}
+        />
+        {/* <TileLayer
+          url={`https://maps.openweathermap.org/maps/2.0/weather/1h/HRD0/4/1/6?date=1618898990&appid=${weatherAPIKey}`}
+          /> */}
         {climbingSpots.map((spot: ClimbingSpot, idx: number) => (
           // icon can be customized
           <Marker key={idx} position={[spot.lat, spot.lon]}>
             <Popup>
-              <b>{spot.tags.name} {spot.tags.indoor === "yes" && <span>(indoor)</span>}</b>
+              <b>{spot.tags.name} {(spot.tags.indoor === "yes" || spot.tags.building === "yes" || spot.tags.leisure === "sports_centre") && <span>(centrum)</span>}</b>
               <br />
               {isForecast ? (
                 forecastData && forecastData.list && forecastData.list.slice(0, 5).map((forecast: ForecastEntry, index: number) => (
