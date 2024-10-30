@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L, { DivIcon } from 'leaflet';
-// import MarkerClusterGroup from 'react-leaflet-markercluster';
-// import 'react-leaflet-markercluster/dist/styles.min.css';
+import L from 'leaflet';
 import {
   useGetClimbingSpotsQuery,
   useGetCurrentWeatherQuery,
-  useGetForecastQuery,
+  // useGetForecastQuery,
 } from './services/api';
 import { useTranslation } from 'react-i18next';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+import WeatherMarker from './components/WeatherMarker';
+import type { ClimbingSpot, Cluster, LatLonTuple } from './types/types';
+
+const weatherAPIKey = 'f1f10124d8835f9f53a99e0425ea5f60'; // config
 
 let DefaultIcon = L.icon({
   iconUrl: icon,
@@ -22,71 +24,23 @@ let DefaultIcon = L.icon({
   iconAnchor: [13, 0]
 });
 
-interface ClimbingSpot {
-  id: string;
-  lat: number;
-  lon: number;
-  //name: string;
-  tags: {
-    "addr:city": string;
-    "addr:city:simc": string;
-    "addr:housenumber": string;
-    "addr:postcode": string;
-    "addr:street": string;
-    "building": string; // "yes"
-    "climbing": string;
-    "climbing:bolted": string; // "yes"
-    "climbing:mixed": string; // "yes"
-    "climbing:rock": string; // "limestone", "sandstone", "granite", "gneiss"
-    "climbing:sport": string; // "yes"
-    "climbing:trad": string; // "yes"
-    "description": string;
-    "email": string;
-    "facebook": string; // "https://www.facebook.com/flow.climbingspace"
-    "fee": string; // "yes"
-    "height": string; // "15" (meters)
-    "indoor": string; // "yes"
-    "leisure": string; // "sports_centre",
-    "name": string; // "Climbing Spot",
-    "opening_hours": string; // "Mo-Fr 09:00-24:00; Sa-Su 08:00-23:00",
-    "phone": string; // "+48 61 250 24 80",
-    "rock": string; // "gneiss"
-    "source:addr": string; // "EMUiA (emuia.geoportal.gov.pl)",
-    "sport": string; // "climbing",
-    "website": string; // "https://www.climbingspot.pl/"
-  }
-}
+// Calculate distance between two points
+const calculateDistance = (point1: LatLonTuple, point2: LatLonTuple) => {
+  const R = 6371; // Earth radius in km
+  const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+  const dLon = (point2.lon - point1.lon) * Math.PI / 180;
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
 
-interface ForecastEntry {
-  dt_txt: string;
-  main: {
-    temp: number;
-  };
-  rain?: {
-    '3h'?: number;
-  };
-  snow?: {
-    '3h'?: number;
-  };
-}
-
-const weatherAPIKey = 'f1f10124d8835f9f53a99e0425ea5f60'; // config
-
+// Group spots into clusters
 const groupSpotsIntoClusters = (spots: ClimbingSpot[], distanceThreshold: number) => {
-  // Function to calculate distance between two points
-  const calculateDistance = (point1: {lat: any, lon: any}, point2: { lat: any; lon: any; }) => {
-    const R = 6371; // Radius of the Earth in km
-    const dLat = (point2.lat - point1.lat) * Math.PI / 180;
-    const dLon = (point2.lon - point1.lon) * Math.PI / 180;
-    const a =
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
 
-  const clusters: { centralPoint: { lat: any, lon: any }; members: ClimbingSpot[]; }[] = [];
+  const clusters: Array<Cluster> = [];
 
   spots.forEach((spot: ClimbingSpot) => {
     let addedToCluster = false;
@@ -117,63 +71,85 @@ const groupSpotsIntoClusters = (spots: ClimbingSpot[], distanceThreshold: number
   return clusters;
 };
 
-const ClusterMarker = ({ cluster }: any) => {
-  // Extract central point coordinates from the cluster
-  const { centralPoint } = cluster;
-  console.log("CENTRAL POINT", centralPoint);
+const isIndoor = (spot: ClimbingSpot) => {
+  return spot.tags.indoor === 'yes'
+    || spot.tags.building === 'yes'
+    || spot.tags.leisure === 'sports_centre';
+};
 
-  // Fetch weather data for the cluster’s central point
-  const { data } = useGetCurrentWeatherQuery({
-    lat: centralPoint.lat,
-    lon: centralPoint.lon,
-  });
-
-  console.log("CP DATA", data);
-
-  if (!data || !data.weather || !data.main) return null;
-
-  const iconUrl = data.weather[0].icon
-    ? `http://openweathermap.org/img/wn/${data.weather[0].icon}.png`
-    : null;
-
-  const temperature = `${data.main.temp}°C`;
-
-  const iconHtml = `
-    <div style="display: flex; align-items: center;">
-      <img src="${iconUrl}" alt="weather icon" style="width: 50px; height: 50px;" />
-      <span style="text-shadow: 1px 1px 1px #fff, -1px 1px 1px #fff, -1px -1px 1px #fff, 1px -1px 1px #fff">${temperature}</span>
-    </div>
-  `;
-
-  const weatherIcon: DivIcon = iconUrl ? new L.DivIcon({
-    html: iconHtml,
-    className: '',
-    iconSize: [60, 60], // Adjust as needed
-    iconAnchor: [30, 30]
-  }) : DefaultIcon;
-
+const IndoorDetails = ({ spot } : { spot: ClimbingSpot }) => {
   return (
-    <Marker position={[centralPoint.lat, centralPoint.lon]} icon={weatherIcon}>
-<Popup>
-        <b>Cluster Weather</b>
-        <br />
-        Temperature: {temperature}
-      </Popup>
-    </Marker>
+    <>
+      <h2>{spot.tags.name}</h2>
+      <div>Ścianka wspinaczkowa</div>
+      {spot.tags.description && <div>{spot.tags.description}</div>}
+      {spot.tags["addr:street"] && <div>{spot.tags["addr:street"]} {spot.tags["addr:housenumber"]}</div>}
+      {spot.tags["addr:city"] && <div>{spot.tags["addr:postcode"]} {spot.tags["addr:city"]}</div>}
+      {spot.tags["opening_hours"] && <div>Czynne: {spot.tags["opening_hours"]}</div>}
+      {spot.tags["phone"] && <div>Telefon: {spot.tags["phone"]}</div>}
+      {spot.tags["website"] && <div>WWW: {spot.tags["website"]}</div>}
+      {spot.tags["facebook"] && <div>FB: {spot.tags["facebook"]}</div>}
+      {spot.tags["height"] && <div>Wysokość: {spot.tags["height"]}m</div>}
+    </>
   );
 };
+
+const OutdoorDetails = ({ spot } : { spot: ClimbingSpot }) => {
+  console.log("SPOT", spot);
+  return (
+    <>
+      <h2>{spot.tags.name}</h2>
+      {spot.tags.description && <div>{spot.tags.description}</div>}
+      {spot.tags.climbing && <div>Typ wspinania: {spot.tags.climbing}</div>}
+      {spot.tags["climbing:boulder"] === "yes" && <div>Bouldery</div>}
+      {spot.tags["climbing:bolted"] === "yes" && <div>Drogi ubezpieczone</div>}
+      {spot.tags["climbing:mixed"] === "yes" && <div>Drogi mieszane</div>}
+      {spot.tags["climbing:sport"] === "yes" && <div>Drogi sportowe</div>}
+      {spot.tags["climbing:trad"] === "yes" && <div>Drogi tradowe (klasyczne)</div>}
+      {spot.tags["climbing:rock"] && <div>Skała: {spot.tags["climbing:rock"]}</div>}
+      {spot.tags["climbing:grade:french:min"] && <div>Min. trudność: {spot.tags["climbing:grade:french:min"]}</div>}
+      {spot.tags["climbing:grade:french:max"] && <div>Max. trudność: {spot.tags["climbing:grade:french:max"]}</div>}
+      {spot.tags["rock"] && <div>Skała: {spot.tags["rock"]}</div>}
+      {spot.tags["height"] && <div>Wysokość: {spot.tags["height"]}m</div>}
+      {spot.tags["climbing:routes"] && <div>Liczba dróg: {spot.tags["climbing:routes"]}</div>}
+      {spot.tags["url"] && <div>URL: {spot.tags["url"]}</div>}
+    </>
+  );
+};
+
+const SpotDetailsPanel = ({ spot, onClose }: { spot: ClimbingSpot; onClose: () => void }) => {
+
+  return (
+  <div style={{ padding: '10px', width: '300px', borderLeft: '1px solid grey', position: 'relative' }}>
+    <button
+      onClick={onClose}
+      style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        background: 'transparent',
+        border: 'none',
+        fontSize: '18px',
+        cursor: 'pointer',
+      }}
+    >
+      &times;
+    </button>
+    {isIndoor(spot) ? <IndoorDetails spot={spot} /> : <OutdoorDetails spot={spot} />}
+  </div>
+)};
 
 function App() {
   const [isForecast, setIsForecast] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number]>([51.1093, 17.0386]); // Wroclaw
   const [radius, setRadius] = useState(100); // default radius in km - 100 km
+  const [selectedSpot, setSelectedSpot] = useState<ClimbingSpot | null>(null);
   const { t } = useTranslation();
 
   useEffect(() => {
     // get user location
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        //console.log("USER POSITION", position);
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
       },
@@ -183,7 +159,7 @@ function App() {
     );
   }, []);
 
-  const { data: climbingSpots = [], refetch: refetchSpots } = useGetClimbingSpotsQuery({
+  const { data: climbingSpots = [] } = useGetClimbingSpotsQuery({
     radius: radius * 1000,
     lat: userLocation[0],
     lon: userLocation[1],
@@ -192,14 +168,11 @@ function App() {
   // group climbing spots into clusters based on distance
   const distanceThreshold = 10; // in kilometers
   const clusters = groupSpotsIntoClusters(climbingSpots, distanceThreshold);
-  console.log("CLUSTERS", clusters);
 
   const { data: weatherData } = useGetCurrentWeatherQuery(
     climbingSpots.length ? { lat: climbingSpots[0].lat, lon: climbingSpots[0].lon } : { lat: 0, lon: 0},
     { skip: climbingSpots.length === 0 }
   );
-
-  console.log("DATA", weatherData);
 
   // const { data: forecastData } = useGetForecastQuery(
   //   climbingSpots.length ? { lat: climbingSpots[0].lat, lon: climbingSpots[0].lon } : { lat: 0, lon: 0},
@@ -207,7 +180,8 @@ function App() {
   // );
 
   return (
-    <div className="App">
+    <div className="App" style={{ display: 'flex' }}>
+    <div style={{ flex: '1' }}>
       <h1>{t("climbing_map")}</h1>
       <div>
         <label>
@@ -233,40 +207,23 @@ function App() {
         {/* <TileLayer
           url={`https://maps.openweathermap.org/maps/2.0/weather/1h/HRD0/4/1/6?date=1618898990&appid=${weatherAPIKey}`}
           /> */}
-          {/* // @ts-ignore  */}
-          {/* <MarkerClusterGroup> */}
 
-          {/* the idea: use this loop to display dots with object names, the other loop for weather (clustered) */}
-        {climbingSpots.map((spot: ClimbingSpot, idx: number) => {
-
-          // const currentWeatherData = weatherData ? weatherData[idx] : null; // Get corresponding weather data
-
-          // if (!currentWeatherData) return null;
-
-          // const iconUrl = currentWeatherData.weather[0].icon
-          //   ? `http://openweathermap.org/img/wn/${currentWeatherData.weather[0].icon}.png`
-          //   : null;
-
-          // const temperature = `${currentWeatherData.main.temp}°C`;
-
-          // const iconHtml = `
-          //   <div style="display: flex; align-items: center;">
-          //     <img src="${iconUrl}" alt="weather icon" style="width: 50px; height: 50px;" />
-          //     <span style="margin-left: 5px;">${temperature}</span>
-          //   </div>
-          // `;
-
-          // const weatherIcon: DivIcon = iconUrl ? new L.DivIcon({
-          //   html: iconHtml,
-          //   className: '',
-          //   iconSize: [60, 60], // Adjust as needed
-          //   iconAnchor: [30, 30]
-          // }) : DefaultIcon;
+          {climbingSpots.map((spot: ClimbingSpot, idx: number) => {
 
           return (
-          <Marker key={idx} position={[spot.lat, spot.lon]} icon={DefaultIcon}>
+          <Marker
+            key={idx}
+            position={[spot.lat, spot.lon]}
+            icon={DefaultIcon}
+            eventHandlers={{
+              click: () => {
+                setSelectedSpot(spot);
+              },
+            }}
+            zIndexOffset={1000}
+            >
             <Popup>
-              <b>{spot.tags.name} {(spot.tags.indoor === "yes" || spot.tags.building === "yes" || spot.tags.leisure === "sports_centre") && <span>(centrum)</span>}</b>
+              <b>{spot.tags.name} {(spot.tags.indoor === "yes" || spot.tags.building === "yes" || spot.tags.leisure === "sports_centre") && <span>(ścianka)</span>}</b>
               <br />
               {/* {isForecast ? (
                 forecastData && forecastData.list && forecastData.list.slice(0, 5).map((forecast: ForecastEntry, index: number) => (
@@ -293,12 +250,13 @@ function App() {
           );
         })}
 
-        {clusters.map((cluster, idx) => (
-          <ClusterMarker key={idx} cluster={cluster} />
+        {clusters.map((cluster: any, idx: number) => (
+          <WeatherMarker key={idx} cluster={cluster} />
         ))}
 
-        {/* </MarkerClusterGroup> */}
       </MapContainer>
+    </div>
+    {selectedSpot && <SpotDetailsPanel spot={selectedSpot} onClose={() => setSelectedSpot(null)} />}
     </div>
   );
 }
