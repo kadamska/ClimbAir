@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "license": "UNLICENSED",
   "main": "src/index.tsx",
-  "homepage": "https://softrockspl.github.io/climbair",
+  "homepage": "https://kadamska.github.io/climbair",
   "scripts": {
     "start": "webpack-dev-server --config webpack.dev.config.js",
     "build": "webpack --config webpack.prod.config.js",

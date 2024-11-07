@@ -12,4 +12,4 @@ Forecast for crags all over the world.
 Using GitHub Pages for deployment. To deploy, run:
  - `yarn deploy`
 
-The app should be live at [https://softrockspl.github.io/climbair](https://softrockspl.github.io/climbair)
+The app should be live at [https://kadamska.github.io/climbair](https://kadamska.github.io/climbair)
