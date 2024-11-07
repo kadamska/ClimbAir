@@ -40,12 +40,4 @@ module.exports={
     port: 9000,
     historyApiFallback: true,
   },
-  // devServer: {
-  //   port: "9500",
-  //   static: ["./public"],
-  //   open: true,
-  //   hot: true,
-  //   liveReload: true,
-  //   historyApiFallback: true
-  // },
 }
